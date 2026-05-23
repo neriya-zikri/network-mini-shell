@@ -119,12 +119,10 @@ void run_path(char* input) {
 
 void start_network_server() {
     struct sockaddr_in my_addr;
-    int sockfd;
-    int opt = 1, pid;
-    char input[MAX_WORD];
-    int bytes_read;
+    char tempInput[MAX_WORD];
+    int bytes_read, sockfd, nfds = 1, added = 0, opt = 1, pid;
+    int comand_len;
     struct pollfd fds[MAX_CLIENTS + 1];
-    int nfds = 1; 
 
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("socket failed");
@@ -146,7 +144,7 @@ void start_network_server() {
     printf("Server listening on port %d with poll()...\n", PORT);
     memset(fds, 0, sizeof(fds));
     fds[0].fd = sockfd;
-    fds[0].events = POLLIN; 
+    fds[0].events = POLLIN;
     for (int i = 1; i <= MAX_CLIENTS; i++) {
         fds[i].fd = -1;
     }
@@ -163,17 +161,17 @@ void start_network_server() {
             int client_fd = accept(sockfd, (struct sockaddr*)&client_addr, &addr_len);
             if (client_fd < 0) {
                 perror("accept failed");
-            } else {
-                int added = 0;
+            }
+            else {
                 for (int i = 1; i <= MAX_CLIENTS; i++) {
                     if (fds[i].fd == -1) {
                         fds[i].fd = client_fd;
-                        fds[i].events = POLLIN; 
+                        fds[i].events = POLLIN;
                         if (i >= nfds) {
                             nfds = i + 1;
                         }
                         printf("Client %d connected from %s!\n", client_fd, inet_ntoa(client_addr.sin_addr));
-                        dprintf(client_fd, "myshell@remote:~$ "); 
+                        dprintf(client_fd, "myshell@remote:~$ ");
                         added = 1;
                         break;
                     }
@@ -189,26 +187,35 @@ void start_network_server() {
 
             if (fds[i].revents & POLLIN) {
                 int current_client = fds[i].fd;
-                memset(input, 0, MAX_WORD);
-                bytes_read = recv(current_client, input, MAX_WORD - 1, 0);
+                memset(tempInput, 0, MAX_WORD);
+                bytes_read = recv(current_client, tempInput, MAX_WORD - 1, 0);
                 if (bytes_read <= 0) {
                     printf("Client %d disconnected.\n", current_client);
                     close(current_client);
-                    fds[i].fd = -1; 
+                    fds[i].fd = -1;
                     continue;
                 }
-                while (bytes_read > 0 && (input[bytes_read - 1] == '\n' || input[bytes_read - 1] == '\r')) {
-                    input[bytes_read - 1] = '\0';
+                while (bytes_read > 0 && (tempInput[bytes_read - 1] == '\n' || tempInput[bytes_read - 1] == '\r')) {
+                    tempInput[bytes_read - 1] = '\0';
                     bytes_read--;
                 }
-                if (strlen(input) == 0) {
-                    dprintf(current_client, "myshell@remote:~$ ");
+                comand_len = strlen(tempInput);
+                char* dynamic_input = (char*)malloc(comand_len+ 1);
+                if(dynamic_input == NULL) {
+                    perror("malloc failed");
                     continue;
                 }
-                if (strcmp(input, "leave") == 0) {
+                strcpy(dynamic_input, tempInput);
+                if (strlen(dynamic_input) == 0) {
+                    dprintf(current_client, "myshell@remote:~$ ");
+                    free(dynamic_input);
+                    continue;
+                }
+                if (strcmp(dynamic_input, "leave") == 0) {
                     dprintf(current_client, "Goodbye!\n");
                     close(current_client);
                     fds[i].fd = -1;
+                    free(dynamic_input);
                     continue;
                 }
                 if ((pid = fork()) == 0) {
@@ -218,11 +225,16 @@ void start_network_server() {
                     for (int j = 0; j < nfds; j++) {
                         if (fds[j].fd != -1) close(fds[j].fd);
                     }
-                    run_path(input);
+                    run_path(dynamic_input);
+                    free(dynamic_input);
                     exit(1);
-                } 
-                else if (pid > 0) {
-                    dprintf(current_client, "myshell@remote:~$ ");
+                }else if (pid > 0){
+                    free(dynamic_input);
+                }
+                else{
+                    perror("fork failed");
+                    free(dynamic_input);
+                    exit(10);
                 }
             }
         }
