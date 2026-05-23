@@ -1,44 +1,224 @@
-# Remote POSIX Mini-Shell Server 🐚🌐
+# Remote POSIX Command Server 🐚🌐
 
-A lightweight, concurrent, and high-performance remote terminal server implemented in **pure C**. The project demonstrates advanced Linux systems programming techniques, network socket handling, and deterministic process synchronization.
+A concurrent remote command execution server written in **pure C** for Linux environments.
+The project focuses on low-level systems programming concepts including POSIX process management, TCP socket communication, inter-process communication (IPC), and asynchronous client handling.
 
-By using asynchronous edge-case handling, it completely avoids deadlocks and eliminates zombie processes while serving multiple clients simultaneously without blocking.
-
----
-
-## 🚀 Key Architectural Features
-
-### 1. I/O Multiplexing via `poll()`
-Instead of spawning a unique heavy kernel thread for every incoming network request, the server uses a dynamic `poll()` event loop. This allows a single-threaded server architecture to scale and efficiently monitor multiple network file descriptors (FDs) concurrently.
-
-### 2. Advanced Process Orchestration & Pipe Handling
-The engine dynamically parses inputs to look for IPC instructions like pipes (`|`). 
-* **Process Isolation:** Spawns targeted child and grandchild processes to encapsulate command executions.
-* **Deterministic I/O Streams:** Safely orchestrates file-descriptor redirections via `dup2()`. It guarantees deterministic terminal prompt deliveries by flushing inputs/outputs to the network socket only after the target process sequence completes.
-
-### 3. Asynchronous Signal Handling (Anti-Zombie Guard)
-To prevent accumulation of resource-leaking "Zombie Processes", the engine implements an asynchronous execution monitoring handler utilizing POSIX signals:
-* Overrides `SIGCHLD` via `sigaction`.
-* Periodically invokes a non-blocking `waitpid(-1, NULL, WNOHANG)` sweep to thoroughly reap completed child processes without context-blocking the core parent routine.
+The server supports multiple remote clients simultaneously, command execution through the Linux shell environment, and Unix pipe orchestration using native Linux system calls.
 
 ---
 
-## 🛠️ Design & Data Flow
+# 🚀 Core System Features
 
-1. **Connection Stage:** Client establishes a TCP connection -> `poll()` intercepts `POLLIN` on the main server socket -> connection accepted and registered into the active file-descriptor array.
-2. **Command Analysis:** Input is stripped of trailing whitespaces. If a pipe symbol (`|`) is located, the execution pipeline splits into a consumer-producer fork chain.
-3. **Execution Stage:** Resolves path directories inside the environment `$PATH`, triggers `execv` mappings, writes back execution outputs to the socket stream, and returns a secure, refreshed network prompt.
+## 1. Concurrent Client Handling with `poll()`
+
+Instead of creating a dedicated blocking execution flow for every incoming client connection, the server utilizes a dynamic `poll()`-based event loop to monitor multiple active file descriptors concurrently.
+
+This architecture enables:
+
+* Efficient multi-client support
+* Non-blocking connection management
+* Lightweight event-driven network handling
+* Scalable socket monitoring
 
 ---
 
-## 💻 How to Build and Run
+## 2. POSIX Process Management & Command Execution
 
-### Prerequisites
-* Linux / Unix-based environment.
-* `gcc` compiler.
+The execution engine dynamically parses incoming commands and launches isolated child processes for execution.
 
-### Installation & Compilation
-Clone the repository and compile using the standard C build toolchain:
+Implemented system-level mechanisms include:
+
+* `fork()` for process creation
+* `execv()` for executable mapping
+* `waitpid()` for child synchronization
+* `$PATH` resolution for command discovery
+* `dup2()` for file descriptor redirection
+
+The server supports:
+
+* Standard Linux command execution
+* Remote terminal interaction
+* Pipe-based command chaining (`|`)
+
+---
+
+## 3. Inter-Process Communication (IPC) with Pipes
+
+Pipe handling is implemented using native Unix pipes.
+
+When a pipe symbol (`|`) is detected:
+
+* The command sequence splits into producer/consumer execution stages
+* Two synchronized child processes are spawned
+* Output redirection is handled through `dup2()`
+* Pipe file descriptors are carefully managed to prevent descriptor leaks
+
+This demonstrates practical IPC orchestration in Linux environments.
+
+---
+
+## 4. Asynchronous Signal Handling & Zombie Prevention
+
+To prevent zombie process accumulation during concurrent execution, the server overrides `SIGCHLD` using `sigaction()`.
+
+A non-blocking cleanup routine continuously reaps completed child processes through:
+
+```c
+waitpid(-1, NULL, WNOHANG)
+```
+
+This ensures:
+
+* Proper child lifecycle management
+* Stable long-running server execution
+* Non-blocking parent process behavior
+
+---
+
+# 🛠️ System Architecture
+
+```text
+Remote Clients
+       │
+       ▼
+TCP Socket Server
+       │
+       ▼
+poll() Event Loop
+       │
+       ▼
+Command Parsing Engine
+       │
+ ┌─────┴─────┐
+ ▼           ▼
+fork()    pipe()
+ ▼           ▼
+execv()  dup2()
+       │
+       ▼
+Remote Output Stream
+```
+
+---
+
+# ⚙️ Key Linux APIs & Concepts
+
+| Category           | Technologies                                           |
+| ------------------ | ------------------------------------------------------ |
+| Networking         | `socket()`, `bind()`, `listen()`, `accept()`, `recv()` |
+| Multiplexing       | `poll()`                                               |
+| Process Management | `fork()`, `waitpid()`                                  |
+| Command Execution  | `execv()`                                              |
+| IPC                | `pipe()`, `dup2()`                                     |
+| Signal Handling    | `sigaction()`                                          |
+| Memory Management  | `malloc()`, `free()`                                   |
+| Linux Concepts     | File descriptors, concurrent systems, POSIX APIs       |
+
+---
+
+# 💻 Supported Functionality
+
+## Basic Command Execution
+
+```bash
+ls
+pwd
+whoami
+date
+```
+
+---
+
+## Pipe Execution
+
+```bash
+ls | wc
+ps aux | grep bash
+```
+
+---
+
+## Multiple Remote Clients
+
+The server supports simultaneous remote client sessions through socket multiplexing.
+
+---
+
+# 🔧 Build & Run
+
+## Compilation
 
 ```bash
 gcc -Wall -Wextra -O2 main.c -o remote_shell
+```
+
+---
+
+## Start Server
+
+```bash
+./remote_shell
+```
+
+Expected output:
+
+```text
+Server listening on port 8080 with poll()...
+```
+
+---
+
+# 🌐 Connect to the Server
+
+## Using Netcat
+
+```bash
+nc 127.0.0.1 8080
+```
+
+## Using Telnet
+
+```bash
+telnet 127.0.0.1 8080
+```
+
+---
+
+# 📚 Learning Objectives
+
+This project was developed to strengthen understanding of:
+
+* Linux systems programming
+* POSIX APIs
+* Concurrent server architecture
+* TCP/IP socket communication
+* Inter-process communication (IPC)
+* Process synchronization
+* Signal handling
+* Low-level software design
+
+---
+
+# 🚀 Future Improvements
+
+* Multi-pipe command support
+* Thread-based concurrency using `pthreads`
+* Authentication & permissions
+* Logging subsystem
+* Thread pool architecture
+* Advanced shell parsing
+* Configuration file support
+* Improved error handling & hardening
+
+---
+
+# 👨‍💻 Author
+
+**Neriya Zikri**
+Computer Science Student focused on:
+
+* Systems Programming
+* Linux Internals
+* Networking
+* Low-Level Software Development
+* Concurrent Systems
